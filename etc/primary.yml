@@ -1,0 +1,25 @@
+# Required. Path used to access LiteFS from your application.
+mount-dir: "./var/primary/mount"
+
+# Optional. Path to store underlying data.
+data-dir: "./var/primary/data"
+
+http:
+  # Specifies the bind address of the HTTP API server.
+  addr: ":20202"
+
+#exec: "hypercorn game --reload --debug --bind game.local.gd:$PORT --access-logfile - --error-logfile - --log-level DEBUG"
+
+
+# Static leadership can be used instead of Consul if only one
+# node should ever be the primary. Only one node in the cluster
+# can be marked as the "primary".
+static:
+  # Specifies that the current node is the primary.
+  primary: true
+
+  # Required. Hostname of the primary node.
+  hostname: "localhost"
+
+  # Required. The API URL of the primary node.
+  advertise-url: "http://tuffix-vm:20202"
