@@ -1,4 +1,3 @@
-from operator import itemgetter
 import databases
 from quart import Quart, g, request, jsonify, abort
 from quart_schema import validate_request, RequestSchemaValidationError, QuartSchema
@@ -7,10 +6,15 @@ import toml
 import random
 import uuid
 from itertools import cycle
+from redis import Redis
+from rq import Queue
+from tasks import postScore
 
 app = Quart(__name__)
 QuartSchema(app)
 app.config.from_file(f"./etc/{__name__}.toml", toml.load)
+
+q = Queue(connection=Redis())
 
 dbs = None
 
@@ -85,15 +89,32 @@ def unauthorized(e):
 def noGameFound(e):
     return {"error": str(e).split(':', 1)[1][1:]}, 404
 
-# @app.route("/test", methods=["GET"])
-# async def what():
+@app.route("/test", methods=["GET"])
+async def what():
+    db = await _get_db()
 
-#     return {"what": 1}
+    data = await db.fetch_all("SELECT * FROM score_url")
+
+    urls = list(map(dict, data))
+
+    return {"urls": urls}
 
     
 # ---------------GAME API---------------
 
 # ---------------HELPERS----------------
+
+async def enqueuePostScoreTask(gameData):
+    db = await _get_db()
+
+    data = await db.fetch_all("SELECT * FROM score_url")
+    urls = list(map(dict, data))
+
+    if len(urls) == 0:
+        return
+    
+    q.enqueue(postScore, {"urls": urls, "gameData": gameData})
+
 
 def getGuessState(guess, secret):
     word = guess
@@ -151,17 +172,24 @@ async def updateGameState(game, word, db, finished = 0):
     numGuesses = game[3]
     nthGuess = 6 - numGuesses + 1
 
-    sql = "UPDATE game SET guesses=:numGuess, finished=:finished, "
+    sql = "UPDATE game SET guesses=:remainingGuesses, finished=:finished, "
     suffix = "guess" + str(nthGuess) + "=:guess, won=:won" + " WHERE id=:id"
 
-    # finished = 1 only when game is won
+    # finished will be 1 only when game is won
     won = finished
     gameFinished = finished
+
+    remainingGuesses = numGuesses - 1
     
-    if numGuesses - 1 == 0:
-        gameFinished = 1
+    if remainingGuesses == 0:
+        gameFinished = 1               
     
-    await db.execute(sql + suffix, values={"numGuess": numGuesses - 1, "id": game[0], "finished": gameFinished, "guess": word, "won": won })
+    await db.execute(sql + suffix, values={"remainingGuesses": remainingGuesses, "id": game[0], "finished": gameFinished, "guess": word, "won": won })
+
+    if gameFinished == 1:
+        data = {"username": game[1], "guesses": remainingGuesses, "win": True if won == 1 else False}
+        await enqueuePostScoreTask(data)
+
 
 # ---------------CREATE NEW GAME---------------
 
@@ -308,9 +336,42 @@ async def getGame(gameId):
     
     return await gameStateToDict(game)
 
+
+# ---------------REGISTER SCORE URL---------------
+
+@app.route("/score-url", methods=["POST"])
+async def registerScoreURL():
+    body = await request.get_json()
+
+    if body is None:
+        abort(400, "Please provide a request body")
+
+    url = body.get("url")
+
+    if url is None:
+        abort(400, "Please provide a url")
+
+    db = await _get_db()
+
+    score_url = await db.fetch_one("SELECT * FROM score_url WHERE _url=:url", {"url": url})
+
+    if score_url is not None:
+        return {"url": url}, 200
+
+    primary_db = await _get_db(True)
+
+    await primary_db.execute(
+        """
+        INSERT INTO score_url(_url)
+        VALUES(:url)
+        """,
+        {"url": url})
+    
+    return {"url": url}, 201
+
 # game
 # 0 = id
-# 1 = userId
+# 1 = username
 # 2 = wordId
 # 3 = guesses
 # 4 = finished

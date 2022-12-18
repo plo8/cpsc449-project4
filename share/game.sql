@@ -14886,6 +14886,11 @@ CREATE TABLE "game"(
     FOREIGN KEY(wordId) REFERENCES correct(id)
 );
 
+DROP TABLE IF EXISTS "score_url";
+CREATE TABLE "score_url"(
+	_url TEXT PRIMARY KEY
+);
+
 CREATE INDEX correct_idx_00017a64 ON correct(word);
 CREATE INDEX valid_idx_00017a64 ON valid(word);
 CREATE INDEX game_idx_25674218 ON game(username);

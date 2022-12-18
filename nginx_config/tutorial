@@ -29,6 +29,10 @@ server {
       }
 
       location /top-10 {
-          proxy_pass http://127.0.0.1:5400/get-scores;
+          proxy_pass http://127.0.0.1:5400/scores/top-10;
+      }
+
+      location /score-url {
+          proxy_pass http://game/score-url;
       } 
 }

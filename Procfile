@@ -6,3 +6,4 @@ score: hypercorn score --reload --debug --bind score.local.gd:$PORT --access-log
 primary: ./bin/litefs -config ./etc/primary.yml
 secondary1: ./bin/litefs -config ./etc/secondary1.yml
 secondary2: ./bin/litefs -config ./etc/secondary2.yml
+worker: rq worker high default low
